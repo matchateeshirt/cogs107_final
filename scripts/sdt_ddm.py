@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 import os
+# Used ChatGPT to help guide where to put the adaptations to the given sdt_ddm.py file 
+
 
 # Mapping dictionaries for categorical variables
 MAPPINGS = {
@@ -87,8 +89,9 @@ def read_data(file_path, prepare_for='sdt', display=False):
         return dp_data
 
 def apply_hierarchical_sdt_model(data):
-    P = len(data['pnum'].unique())  # Number of participants
-    C = len(data['condition'].unique())  # Number of conditions (4)
+    # Get unique participants and conditions
+    P = len(data['pnum'].unique()) 
+    C = len(data['condition'].unique())  
 
     # Define design matrix for fixed effects (Stimulus Type, Difficulty, Interaction)
     stimulus_type = np.array([0, 1, 0, 1])  # 0=simple, 1=complex
