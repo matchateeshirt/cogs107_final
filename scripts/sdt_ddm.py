@@ -87,33 +87,84 @@ def read_data(file_path, prepare_for='sdt', display=False):
         return dp_data
 
 def apply_hierarchical_sdt_model(data):
-    P = len(data['pnum'].unique())
-    C = len(data['condition'].unique())
+    P = len(data['pnum'].unique())  # Number of participants
+    C = len(data['condition'].unique())  # Number of conditions (4)
+
+    # Define design matrix for fixed effects (Stimulus Type, Difficulty, Interaction)
+    stimulus_type = np.array([0, 1, 0, 1])  # 0=simple, 1=complex
+    difficulty = np.array([0, 0, 1, 1])     # 0=easy, 1=hard
+    interaction = stimulus_type * difficulty
+
     with pm.Model() as sdt_model:
-        mean_d_prime = pm.Normal('mean_d_prime', mu=0.0, sigma=1.0, shape=C)
+        # ==== Fixed effects for d′ ====
+        beta_d0 = pm.Normal('beta_d0', 0, 1)
+        beta_d_stim = pm.Normal('beta_d_stim', 0, 1)
+        beta_d_diff = pm.Normal('beta_d_diff', 0, 1)
+        beta_d_inter = pm.Normal('beta_d_inter', 0, 1)
+
+        mean_d_prime = beta_d0 + beta_d_stim * stimulus_type + beta_d_diff * difficulty + beta_d_inter * interaction
         stdev_d_prime = pm.HalfNormal('stdev_d_prime', sigma=1.0)
-        mean_criterion = pm.Normal('mean_criterion', mu=0.0, sigma=1.0, shape=C)
+
+        # ==== Fixed effects for criterion (c) ====
+        beta_c0 = pm.Normal('beta_c0', 0, 1)
+        beta_c_stim = pm.Normal('beta_c_stim', 0, 1)
+        beta_c_diff = pm.Normal('beta_c_diff', 0, 1)
+        beta_c_inter = pm.Normal('beta_c_inter', 0, 1)
+
+        mean_criterion = beta_c0 + beta_c_stim * stimulus_type + beta_c_diff * difficulty + beta_c_inter * interaction
         stdev_criterion = pm.HalfNormal('stdev_criterion', sigma=1.0)
+
+        # ==== Participant-level parameters ====
         d_prime = pm.Normal('d_prime', mu=mean_d_prime, sigma=stdev_d_prime, shape=(P, C))
         criterion = pm.Normal('criterion', mu=mean_criterion, sigma=stdev_criterion, shape=(P, C))
+
+        # ==== Likelihoods ====
         hit_rate = pm.math.invlogit(d_prime - criterion)
         false_alarm_rate = pm.math.invlogit(-criterion)
-        pm.Binomial('hit_obs', n=data['nSignal'], p=hit_rate[data['pnum'] - 1, data['condition']], observed=data['hits'])
-        pm.Binomial('false_alarm_obs', n=data['nNoise'], p=false_alarm_rate[data['pnum'] - 1, data['condition']], observed=data['false_alarms'])
+
+        pm.Binomial('hit_obs',
+                    n=data['nSignal'],
+                    p=hit_rate[data['pnum'] - 1, data['condition']],
+                    observed=data['hits'])
+
+        pm.Binomial('false_alarm_obs',
+                    n=data['nNoise'],
+                    p=false_alarm_rate[data['pnum'] - 1, data['condition']],
+                    observed=data['false_alarms'])
+
     return sdt_model
 
 def analyze_and_visualize(file_path):
-    sdt_data = read_data(file_path, prepare_for='sdt', display=True)
+    # === Read and prepare data for SDT ===
+    sdt_data = read_data(file_path, prepare_for='sdt')
+
+    # === Fit the hierarchical SDT model ===
     with apply_hierarchical_sdt_model(sdt_data) as model:
-        trace = pm.sample(2000, tune=1000, target_accept=0.9)
-        az.plot_trace(trace, var_names=['mean_d_prime', 'mean_criterion'])
-        plt.tight_layout()
-        plt.savefig("traceplots.png")
-        summary = az.summary(trace, var_names=['mean_d_prime', 'mean_criterion'])
-        print(summary)
+        trace = pm.sample(2000, tune=1000, target_accept=0.9, return_inferencedata=True)
+
+    # === Plot trace diagnostics ===
+    trace_vars = [
+        "beta_d0", "beta_d_stim", "beta_d_diff", "beta_d_inter",
+        "beta_c0", "beta_c_stim", "beta_c_diff", "beta_c_inter"
+    ]
+    az.plot_trace(trace, var_names=trace_vars)
+    plt.tight_layout()
+    plt.savefig("traceplots.png")
+    plt.close()
+
+    # === Posterior summary table ===
+    summary = az.summary(trace, var_names=trace_vars, hdi_prob=0.95)
+    print("\nPosterior Summary of Fixed Effects (Regression Coefficients):")
+    print(summary)
+    summary.to_csv("trace_summary.csv")
+
+    # === Read and prepare data for delta plots ===
     dp_data = read_data(file_path, prepare_for='delta plots')
+
+    # === Draw delta plots per participant ===
     for p in dp_data['pnum'].unique():
         draw_delta_plots(dp_data, pnum=p)
+
 
 def draw_delta_plots(data, pnum):
     data = data[data['pnum'] == pnum]
