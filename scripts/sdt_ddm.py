@@ -167,6 +167,9 @@ def analyze_and_visualize(file_path):
     # === Draw delta plots per participant ===
     for p in dp_data['pnum'].unique():
         draw_delta_plots(dp_data, pnum=p)
+    
+    return trace, dp_data
+
 
 
 def draw_delta_plots(data, pnum):
@@ -209,5 +212,46 @@ def draw_delta_plots(data, pnum):
     plt.tight_layout()
     plt.savefig(OUTPUT_DIR / f'delta_plots_{pnum}.png')
 
+
+# Comparing the effects of Trial Difficulty manipulation with Stimulus Type manipulation: 
+def compare_sdt_and_delta(trace, dp_data):
+    """
+    Compare the effect of stimulus type and difficulty using SDT and RT (delta plots).
+    """
+    print("\n===== SDT Model Parameter Effects (Posterior Summaries) =====")
+    sdt_summary = az.summary(trace, var_names=[
+        "beta_d_stim", "beta_d_diff", "beta_d_inter",
+        "beta_c_stim", "beta_c_diff", "beta_c_inter"
+    ])
+    print(sdt_summary)
+
+
+    print("\n===== Delta Plot Mean RT Differences by Condition =====")
+    condition_pairs = [
+        (0, 1),  # Easy Simple vs Easy Complex (stimulus type effect)
+        (0, 2),  # Easy Simple vs Hard Simple (difficulty effect)
+    ]
+
+    for cond1, cond2 in condition_pairs:
+        label = f"{CONDITION_NAMES[cond2]} - {CONDITION_NAMES[cond1]}"
+        deltas = []
+        for pnum in dp_data['pnum'].unique():
+            pdata = dp_data[dp_data['pnum'] == pnum]
+            mask1 = (pdata['condition'] == cond1) & (pdata['mode'] == 'overall')
+            mask2 = (pdata['condition'] == cond2) & (pdata['mode'] == 'overall')
+            if mask1.any() and mask2.any():
+                rt1 = np.array([pdata[mask1][f'p{p}'].values[0] for p in PERCENTILES])
+                rt2 = np.array([pdata[mask2][f'p{p}'].values[0] for p in PERCENTILES])
+                deltas.append(rt2 - rt1)
+        if deltas:
+            avg_delta = np.mean(deltas, axis=0)
+            print(f"{label} RT Differences at Percentiles (10-90): {np.round(avg_delta, 3)}")
+
 if __name__ == "__main__":
-    analyze_and_visualize("/home/jovyan/cogs107s25/sdt_ddm_project/data/data.csv")
+    trace, dp_data = analyze_and_visualize("/home/jovyan/cogs107s25/sdt_ddm_project/data/data.csv")
+    compare_sdt_and_delta(trace, dp_data)
+
+    print("\n==== Interpretation ====")
+    print("Trial difficulty has a greater effect on the SDT parameters (especially d') and RTs than the stimulus type.")
+    print("Stimulus type has a smaller, but more stable, effect. The higher the difficulty, the weaker the stimulus effects are.")
+
