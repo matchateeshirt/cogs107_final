@@ -98,6 +98,7 @@ def apply_hierarchical_sdt_model(data):
     difficulty = np.array([0, 0, 1, 1])     # 0=easy, 1=hard
     interaction = stimulus_type * difficulty
 
+# Quanitfying the effect of Stimulus Type and Trial Difficulty: 
     with pm.Model() as sdt_model:
         # ==== Fixed effects for d′ ====
         beta_d0 = pm.Normal('beta_d0', 0, 1)
@@ -155,6 +156,7 @@ def analyze_and_visualize(file_path):
     plt.savefig("traceplots.png")
     plt.close()
 
+# Checking convergence of SDT model: 
     # === Posterior summary table ===
     summary = az.summary(trace, var_names=trace_vars, hdi_prob=0.95)
     print("\nPosterior Summary of Fixed Effects (Regression Coefficients):")
